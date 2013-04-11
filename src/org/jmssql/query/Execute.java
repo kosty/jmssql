@@ -6,17 +6,22 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
+import java.util.List;
 
 import javax.sql.DataSource;
 
+import org.apache.log4j.Logger;
+
 public class Execute {
+    
+    private final static Logger log = Logger.getLogger(Execute.class);
 
     public static Info update(DataSource ds, String sql) {
         Connection con = null;
         PreparedStatement stmt = null;
         try {
 
-            System.out.println(sql);
+            log.info(sql);
 
             con = ds.getConnection();
             stmt = con.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS);
@@ -38,6 +43,28 @@ public class Execute {
             closeQuiet(con);
         }
     }
+    
+    public static <ResultType> ResultType query(DataSource ds, H<ResultType> handler, String sql) {
+        Connection con = null;
+        PreparedStatement stmt = null;
+        ResultSet rs = null;
+        try {
+            log.info(sql);
+            
+            con = ds.getConnection();
+            stmt = con.prepareStatement(sql);
+            rs = stmt.executeQuery();
+            
+            return handler.handleResult(rs);
+        } catch (SQLException e) {
+            e.printStackTrace();
+            throw new RuntimeException("Couldn't execute update: '" + sql + "'", e);
+        } finally {
+            closeQuiet(rs);
+            closeQuiet(stmt);
+            closeQuiet(con);
+        }
+    }
 
     public static void closeQuiet(Statement stmt) {
         if (stmt == null)
@@ -55,6 +82,40 @@ public class Execute {
             con.close();
         } catch (Exception e) {
         }
+    }
+    
+    public static void closeQuiet(ResultSet rs) {
+        if (rs == null)
+            return;
+        try {
+            rs.close();
+        } catch (Exception e) {
+        }
+    }
+    
+    static interface H<ResultType> {
+        ResultType handleResult(ResultSet rs) throws SQLException;
+    }
+    
+    public abstract static class ListOf<ResultType> implements H<List<ResultType>> {
+        public List<ResultType> handleResult(ResultSet rs) throws SQLException {
+            ArrayList<ResultType> result = new ArrayList<ResultType>();
+            while (rs.next())
+                result.add(extract(rs));
+            return result;
+        }
+
+        protected abstract ResultType extract(ResultSet rs) throws SQLException;
+    }
+    
+    public abstract static class Single<ResultType> implements H<ResultType> {
+        public ResultType handleResult(ResultSet rs) throws SQLException {
+            if (rs.next())
+                return extract(rs);
+            return null;
+        }
+
+        protected abstract ResultType extract(ResultSet rs) throws SQLException;
     }
 
     public static class Info {

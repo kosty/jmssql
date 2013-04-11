@@ -5,6 +5,8 @@ import static org.jmssql.util.Files.tildeExpand;
 import java.io.File;
 import java.io.IOException;
 import java.lang.Thread.UncaughtExceptionHandler;
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Enumeration;
@@ -12,13 +14,18 @@ import java.util.List;
 
 import javax.sql.DataSource;
 
-import org.apache.commons.io.FileUtils;
 import org.apache.log4j.Appender;
 import org.apache.log4j.BasicConfigurator;
+import org.apache.log4j.FileAppender;
 import org.apache.log4j.Level;
 import org.apache.log4j.Logger;
 import org.apache.log4j.PatternLayout;
+import org.jmssql.cli.FileLineReader;
+import org.jmssql.cli.JLineReader;
+import org.jmssql.cli.LineReader;
+import org.jmssql.cli.Repl;
 import org.jmssql.query.Execute;
+import org.jmssql.query.Execute.ListOf;
 import org.jmssql.tx.TXHelper;
 import org.jmssql.tx.TXHelperImpl;
 
@@ -42,7 +49,12 @@ public class Client {
 
     public static void initDebugLogger() {
         BasicConfigurator.resetConfiguration();
-        BasicConfigurator.configure();
+        try {
+            BasicConfigurator.configure(new FileAppender(null, File.createTempFile("jmssql-", "log").getAbsolutePath()));
+        } catch (IOException e) {
+            e.printStackTrace();
+            BasicConfigurator.configure();
+        }
         Enumeration appenders = Logger.getRootLogger().getAllAppenders();
         while (appenders.hasMoreElements()) {
             Appender a = (Appender) appenders.nextElement();
@@ -55,11 +67,8 @@ public class Client {
     public static File sqlFile;
     public static String confFile;
 
-    public static void main(String[] args) {
+    public static void main(String[] args) throws IOException {
         List<String> a = new ArrayList<String>(Arrays.asList(args));
-        if (a.size() < 4) {
-            usage();
-        }
 
         while (!a.isEmpty()) {
             String key = a.remove(0);
@@ -78,21 +87,35 @@ public class Client {
         }
 
         final Config opts = Config.parse(tildeExpand(confFile));
-        final List<String> sql = new ArrayList<String>();
-        try {
-            sql.addAll(FileUtils.readLines(sqlFile));
-        } catch (IOException ioe) {
-            ioe.printStackTrace();
-            System.exit(1);
-        }
+
+        final LineReader reader = pickReader();
+
         final DataSource dataSource = opts.getDataSource();
 
         try {
             TXHelperImpl txHelper = new TXHelperImpl(dataSource);
             txHelper.run(new TXHelper.R() {
                 public void run() throws Exception {
-                    for (String anSql : sql) {
-                        Execute.update(dataSource, anSql);
+                    String anSql = null;
+                    while ((anSql = reader.nextLine()) != null) {
+                        String canonicSql = anSql.trim().toLowerCase();
+                        if (canonicSql.startsWith("select") && !canonicSql.contains("into"))
+                            Execute.query(dataSource, new ListOf<List<String>>() {
+                                @Override
+                                protected List<String> extract(ResultSet rs) throws SQLException {
+                                    List<String> obj = new ArrayList<String>();
+                                    int columnCount = rs.getMetaData().getColumnCount();
+                                    for (int i = 1; i <= columnCount; i++) {
+                                        String val = rs.getString(i);
+                                        System.out.print(val + "\t");
+                                        obj.add(val);
+                                    }
+                                    System.out.println();
+                                    return obj;
+                                }
+                            }, anSql);
+                        else
+                            Execute.update(dataSource, anSql);
                     }
                 }
             });
@@ -103,9 +126,18 @@ public class Client {
         }
     }
 
+    private static LineReader pickReader() throws IOException {
+        if (sqlFile != null) 
+            return new FileLineReader(sqlFile);
+        
+        if (System.in.available() > 0)
+            return new Repl();
+
+        return new JLineReader();
+    }
+
     private static void usage() {
-        System.err
-                .println("usage: java -cp jmssql.jar org.jmssql.Client --sqlfile <filename.sql> --config <jmssql.config>");
+        System.err.println("usage: java -cp jmssql.jar org.jmssql.Client [--sqlfile <filename.sql>] --config <jmssql.config>");
         System.exit(1);
     }
 }
