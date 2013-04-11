@@ -231,28 +231,24 @@ class NoTXConnection implements java.sql.Connection {
     }
 
     public int getNetworkTimeout() throws SQLException {
-        return delegate.getNetworkTimeout();
+        return 0;//delegate.getNetworkTimeout();
     }
 
-    @Override
     public void setSchema(String schema) throws SQLException {
-        delegate.setSchema(schema);
+        //delegate.setSchema(schema);
     }
 
-    @Override
     public String getSchema() throws SQLException {
-        return delegate.getSchema();
+        return null;//delegate.getSchema();
     }
 
-    @Override
     public void abort(Executor executor) throws SQLException {
-        delegate.abort(executor);
+//        delegate.abort(executor);
 
     }
 
-    @Override
     public void setNetworkTimeout(Executor executor, int milliseconds) throws SQLException {
-        delegate.setNetworkTimeout(executor, milliseconds);
+//        delegate.setNetworkTimeout(executor, milliseconds);
     }
 
 }
