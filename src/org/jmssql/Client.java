@@ -98,26 +98,10 @@ public class Client {
                 public void run() throws Exception {
                     String anSql = null;
                     while ((anSql = reader.nextLine()) != null) {
-                        String canonicSql = anSql.trim().toLowerCase();
-                        if (canonicSql.startsWith("select") && !canonicSql.contains("into"))
-                            Execute.query(dataSource, new ListOf<List<String>>() {
-                                @Override
-                                protected List<String> extract(ResultSet rs) throws SQLException {
-                                    List<String> obj = new ArrayList<String>();
-                                    int columnCount = rs.getMetaData().getColumnCount();
-                                    for (int i = 1; i <= columnCount; i++) {
-                                        String val = rs.getString(i);
-                                        System.out.print(val + "\t");
-                                        obj.add(val);
-                                    }
-                                    System.out.println();
-                                    return obj;
-                                }
-                            }, anSql);
-                        else
-                            Execute.update(dataSource, anSql);
+                        runSql(dataSource, anSql);
                     }
                 }
+
             });
 
         } catch (Throwable e) {
@@ -125,6 +109,59 @@ public class Client {
             System.exit(3);
         }
     }
+
+    private static void runSql(final DataSource dataSource, String anSql) {
+        String canonicSql = anSql.trim().toLowerCase();
+        try {
+            if (canonicSql.startsWith("select") && !canonicSql.contains("into"))
+
+                Execute.query(dataSource, new ListOf<List<String>>() {
+                    @Override
+                    protected List<String> extract(ResultSet rs) throws SQLException {
+                        List<String> obj = new ArrayList<String>();
+                        int columnCount = rs.getMetaData().getColumnCount();
+                        for (int i = 1; i <= columnCount; i++) {
+                            String val = rs.getString(i);
+                            System.out.print(val + "\t");
+                            obj.add(val);
+                        }
+                        System.out.println();
+                        return obj;
+                    }
+                }, anSql);
+            else
+                Execute.update(dataSource, anSql);
+        } catch (SQLException sqle){
+            System.out.println(collectExceptionMessages(sqle));
+            
+        } catch (RuntimeException re) {
+            if (!isCousedBySQLException(re))
+                throw re;
+
+            System.out.println(collectExceptionMessages(re));
+        }
+    }
+
+    private static String collectExceptionMessages(Throwable re) {
+        StringBuilder sb = new StringBuilder();
+        while(re != null){
+            sb.append(re.getMessage()).append("\n");
+            re = re.getCause();
+        }
+        return sb.toString();
+    }
+
+    private static boolean isCousedBySQLException(Throwable re) {
+        if (re instanceof SQLException)
+            return true;
+        
+        if (re.getCause() == null)
+            return false;
+        
+        return isCousedBySQLException(re.getCause());
+    }
+    
+    
 
     private static LineReader pickReader() throws IOException {
         if (sqlFile != null) 

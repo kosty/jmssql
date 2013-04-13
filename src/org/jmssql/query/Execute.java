@@ -16,7 +16,7 @@ public class Execute {
     
     private final static Logger log = Logger.getLogger(Execute.class);
 
-    public static Info update(DataSource ds, String sql) {
+    public static Info update(DataSource ds, String sql) throws SQLException {
         Connection con = null;
         PreparedStatement stmt = null;
         try {
@@ -36,15 +36,13 @@ public class Execute {
             }
 
             return new Info(updatedRows, keys.toArray());
-        } catch (SQLException e) {
-            throw new RuntimeException("Couldn't execute update: '" + sql + "'", e);
         } finally {
             closeQuiet(stmt);
             closeQuiet(con);
         }
     }
     
-    public static <ResultType> ResultType query(DataSource ds, H<ResultType> handler, String sql) {
+    public static <ResultType> ResultType query(DataSource ds, H<ResultType> handler, String sql) throws SQLException {
         Connection con = null;
         PreparedStatement stmt = null;
         ResultSet rs = null;
@@ -56,9 +54,6 @@ public class Execute {
             rs = stmt.executeQuery();
             
             return handler.handleResult(rs);
-        } catch (SQLException e) {
-            e.printStackTrace();
-            throw new RuntimeException("Couldn't execute update: '" + sql + "'", e);
         } finally {
             closeQuiet(rs);
             closeQuiet(stmt);
