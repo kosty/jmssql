@@ -19,12 +19,21 @@ java -jar jmssql-0.0.2-uberjar.jar --sqlfile <sqlstatements.sql> --config <java-
 
 ```bash
 java -jar jmssql-0.0.2-uberjar.jar --config <java-properties-file.conf>
+jmssql> select * from customer
 ```
 
 ### Pipeline 
 
 ```bash
 echo "select * from customer" | java -jar jmssql-0.0.2-uberjar.jar --config <java-properties-file.conf>
+```
+
+# Dev notes
+
+Complete build with maven
+
+```bash
+mvn clean javadoc:jar source:jar install package
 ```
 
 Have fun
