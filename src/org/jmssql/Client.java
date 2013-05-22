@@ -1,5 +1,6 @@
 package org.jmssql;
 
+import static org.apache.commons.lang.StringUtils.isBlank;
 import static org.jmssql.util.Files.tildeExpand;
 
 import java.io.File;
@@ -85,6 +86,10 @@ public class Client {
                 usage();
             }
         }
+        
+        if (isBlank(confFile))
+            usage();
+            
 
         final Config opts = Config.parse(tildeExpand(confFile));
 
@@ -132,13 +137,13 @@ public class Client {
             else
                 Execute.update(dataSource, anSql);
         } catch (SQLException sqle){
-            System.out.println(collectExceptionMessages(sqle));
+            System.out.println(collectExceptionMessages(sqle)+" while running sql: "+anSql);
             
         } catch (RuntimeException re) {
             if (!isCousedBySQLException(re))
                 throw re;
 
-            System.out.println(collectExceptionMessages(re));
+            System.out.println(collectExceptionMessages(re)+" while running sql: "+anSql);
         }
     }
 
