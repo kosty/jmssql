@@ -15,6 +15,7 @@ public class Config {
     private String url;
     private String user;
     private String password;
+    private String debug;
 
     public static Config parse(File tildeExpand) {
         Config opts = new Config();
@@ -28,6 +29,8 @@ public class Config {
         opts.url = config.getProperty("url");
         opts.user = config.getProperty("user");
         opts.password = config.getProperty("password");
+        opts.debug = config.getProperty("debug", "false");
+        
         return opts;
     }
 
@@ -42,6 +45,10 @@ public class Config {
         bds.setTimeBetweenEvictionRunsMillis(1000);
         bds.setNumTestsPerEvictionRun(1000);
         return bds;
+    }
+    
+    public boolean isDebugEnabled(){
+        return !"false".equals(debug);
     }
 
 }

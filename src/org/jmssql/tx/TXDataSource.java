@@ -59,7 +59,6 @@ class TXDataSource implements DataSource {
         throw new UnsupportedOperationException("Stan");
     }
 
-    @Override
     public Logger getParentLogger() throws SQLFeatureNotSupportedException {
         throw new UnsupportedOperationException("Stan");
     }
