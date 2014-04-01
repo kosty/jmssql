@@ -13,6 +13,7 @@ import java.util.Arrays;
 import java.util.Enumeration;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Pattern;
 
 import javax.sql.DataSource;
 
@@ -80,6 +81,8 @@ public class Client {
 
         while (!a.isEmpty()) {
             String key = a.remove(0);
+            if (a.isEmpty())
+                usage();
             String val = a.remove(0);
             if ("--sqlfile".equals(key)) {
                 sqlFile = tildeExpand(val);
@@ -89,17 +92,16 @@ public class Client {
                 }
             } else if ("--config".equals(key)) {
                 confFile = val;
-            } else if ("--output".equals(key)){
-                
+            } else if ("--output".equals(key)) {
+
                 output = val;
             } else {
                 usage();
             }
         }
-        
+
         if (isBlank(confFile))
             usage();
-            
 
         final Config opts = Config.parse(tildeExpand(confFile));
 
@@ -107,71 +109,28 @@ public class Client {
 
         final DataSource dataSource = opts.getDataSource();
 
-        try {
-            TXHelperImpl txHelper = new TXHelperImpl(dataSource);
-            txHelper.run(new TXHelper.R() {
-                public void run() throws Exception {
-                    String anSql = null;
-                    while ((anSql = reader.nextLine()) != null) {
-                        try {
-                            runSql(dataSource, anSql);
-                        } catch (SQLException sqle){
-                            System.out.println(collectExceptionMessages(sqle)+" while running sql: "+anSql);
-                            
-                            if (opts.isDebugEnabled())
-                                sqle.printStackTrace(System.err);
-                            
-                            if (!(reader instanceof JLineReader))
-                                System.exit(-2);
-                            
-                        } catch (RuntimeException re) {
-                            if (!isCousedBySQLException(re))
-                                throw re;
+        String anSql = null;
+        TXHelperImpl txHelper = new TXHelperImpl(dataSource);
+        while ((anSql = reader.nextLine()) != null) {
+            try {
+                txHelper.run(new RunSqlLine(dataSource, anSql));
+            } catch (RuntimeException re) {
+                if (!isCousedBySQLException(re))
+                    throw re;
 
-                            if (opts.isDebugEnabled())
-                                re.printStackTrace(System.err);
-                            
-                            if (!(reader instanceof JLineReader))
-                                System.exit(-2);
-                            
-                            System.out.println(collectExceptionMessages(re)+" while running sql: "+anSql);
-                        }
-                    }
-                }
+                if (opts.isDebugEnabled())
+                    re.printStackTrace(System.err);
 
-            });
+                if (!(reader instanceof JLineReader))
+                    System.exit(-2);
 
-        } catch (Throwable e) {
-            e.printStackTrace();
-            System.exit(3);
-        }
-    }
+                System.out.println(collectExceptionMessages(re) + " while running sql: " + anSql);
 
-    private static void runSql(final DataSource dataSource, String anSql) throws SQLException, IOException {
-        String canonicSql = anSql.trim().toLowerCase();
-
-        if (canonicSql.contains("select") && !(canonicSql.contains("into") || canonicSql.contains("update"))) {
-
-            if ("json".equals(output) || "prettyjson".equals(output)) {
-                List<Map<String, String>> result = Execute.query(dataSource, new Execute.MapingLikeList(), anSql);
-                GsonBuilder gb = new GsonBuilder();
-                gb.disableHtmlEscaping();
-                gb.serializeNulls();
-                
-                if ("prettyjson".equals(output))
-                    gb.setPrettyPrinting();
-                System.out.println(gb.create().toJson(result));
-
-            } else {
-                List<String[]> results = Execute.query(dataSource, new TableLikeList("headedcsv".equals(output) || "headedtab".equals(output)), anSql);
-                if ("csv".equals(output) || "headedcsv".equals(output)) {
-                    writeCSV(results);
-                } else {
-                    writeTabulated(results);
-                }
+            } catch (Throwable e) {
+                e.printStackTrace();
+                System.exit(3);
             }
-        } else
-            Execute.update(dataSource, anSql);
+        }
     }
 
     private static void writeTabulated(List<String[]> results) {
@@ -186,7 +145,7 @@ public class Client {
     }
 
     private static void writeCSV(List<String[]> results) throws IOException {
-        CSVWriter writer = new CSVWriter(new OutputStreamWriter(System.out), ',', '\'','\'');
+        CSVWriter writer = new CSVWriter(new OutputStreamWriter(System.out), ',', '\'', '\'');
         try {
             writer.writeAll(results);
             writer.flush();
@@ -194,10 +153,10 @@ public class Client {
             IOUtils.closeQuietly(writer);
         }
     }
-    
+
     private static String collectExceptionMessages(Throwable re) {
         StringBuilder sb = new StringBuilder();
-        while(re != null){
+        while (re != null) {
             sb.append(re.getMessage()).append("\n");
             re = re.getCause();
         }
@@ -207,19 +166,17 @@ public class Client {
     private static boolean isCousedBySQLException(Throwable re) {
         if (re instanceof SQLException)
             return true;
-        
+
         if (re.getCause() == null)
             return false;
-        
+
         return isCousedBySQLException(re.getCause());
     }
-    
-    
 
     private static LineReader pickReader() throws IOException {
-        if (sqlFile != null) 
+        if (sqlFile != null)
             return new FileLineReader(sqlFile);
-        
+
         if (System.in.available() > 0)
             return new Repl();
 
@@ -230,4 +187,59 @@ public class Client {
         System.err.println("usage: java -cp jmssql.jar org.jmssql.Client --config <jmssql.config> [--sqlfile <filename.sql>] [--output json|csv|tab|prettyjson|headedcsv|headedtab]");
         System.exit(1);
     }
+
+    public static class RunSqlLine implements TXHelper.R {
+
+        private String anSql;
+        private DataSource dataSource;
+
+        public RunSqlLine(final DataSource dataSource, String anSql) {
+            this.dataSource = dataSource;
+            this.anSql = anSql;
+
+        }
+
+        public void run() throws Exception {
+            runSql(dataSource, anSql);
+        }
+
+        private void runSql(final DataSource dataSource, String anSql) throws SQLException, IOException {
+            String canonicSql = anSql.trim().toLowerCase();
+
+            if (producesOutput(canonicSql)) {
+
+                if ("json".equals(output) || "prettyjson".equals(output)) {
+                    List<Map<String, String>> result = Execute.query(dataSource, new Execute.MapingLikeList(), anSql);
+                    GsonBuilder gb = new GsonBuilder();
+                    gb.disableHtmlEscaping();
+                    gb.serializeNulls();
+
+                    if ("prettyjson".equals(output))
+                        gb.setPrettyPrinting();
+                    System.out.println(gb.create().toJson(result));
+
+                } else {
+                    List<String[]> results = Execute.query(dataSource, new TableLikeList("headedcsv".equals(output) || "headedtab".equals(output)), anSql);
+                    if ("csv".equals(output) || "headedcsv".equals(output)) {
+                        writeCSV(results);
+                    } else {
+                        writeTabulated(results);
+                    }
+                }
+            } else
+                Execute.update(dataSource, anSql);
+        }
+        
+        public static final Pattern hasSelect = Pattern.compile(".*[\\s]*select[\\s].*");
+        public static final Pattern hasInto = Pattern.compile(".*[\\s]into[\\s].*");
+        public static final Pattern hasUpdate = Pattern.compile(".*[\\s]update[\\s].*");
+        
+        public static boolean producesOutput(String sql){
+            boolean s = hasSelect.matcher(sql).matches(); 
+            boolean i = hasInto.matcher(sql).matches();
+            boolean u = hasUpdate.matcher(sql).matches();
+            return s && !(i || u);
+        }
+    }
+
 }
