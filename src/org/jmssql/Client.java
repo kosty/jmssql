@@ -233,12 +233,14 @@ public class Client {
         public static final Pattern hasSelect = Pattern.compile(".*[\\s]*select[\\s].*");
         public static final Pattern hasInto = Pattern.compile(".*[\\s]into[\\s].*");
         public static final Pattern hasUpdate = Pattern.compile(".*[\\s]update[\\s].*");
+        public static final Pattern hasExec = Pattern.compile("[\\s]*exec[\\s].*");
         
         public static boolean producesOutput(String sql){
             boolean s = hasSelect.matcher(sql).matches(); 
             boolean i = hasInto.matcher(sql).matches();
             boolean u = hasUpdate.matcher(sql).matches();
-            return s && !(i || u);
+            boolean e = hasExec.matcher(sql).matches();
+            return e || (s && !(i || u));
         }
     }
 
